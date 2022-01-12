@@ -1,0 +1,8 @@
+
+kafka:
+  host:
+    localhost:9092
+  topic:
+    test
+  groupId:
+    dongholab
