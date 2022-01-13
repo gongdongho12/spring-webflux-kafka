@@ -7,6 +7,7 @@ import org.apache.kafka.common.serialization.StringSerializer
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
 import reactor.core.scheduler.Schedulers
 import reactor.kafka.receiver.ReceiverOptions
 import reactor.kafka.sender.KafkaSender
@@ -15,15 +16,10 @@ import java.time.Duration
 
 
 @Configuration
-class KafkaConfig {
-    @Value("\${kafka.host:localhost:9092}")
-    private lateinit var host: String
-
-    @Value("\${kafka.topic:test}")
-    private lateinit var topic: String
-
-    @Value("\${kafka.groupId:dongholab}")
-    private lateinit var groupId: String
+class KafkaConfig(val env: Environment) {
+    private val host: String = env.getProperty("kafka.host", "localhost:9092")
+    private val topic: String = env.getProperty("kafka.topic", "test")
+    private val groupId: String = env.getProperty("kafka.groupId", "dongholab")
 
     @Bean("kafkaSender")
     fun kafkaSender(): KafkaSender<String, Any> {
