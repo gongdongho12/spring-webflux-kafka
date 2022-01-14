@@ -42,5 +42,5 @@ services:
 ```
 실행
 ```bash
-docker-compose -d -f ./kafka-gui.yml up
+docker-compose -f ./kafka-gui.yml up
 ```
