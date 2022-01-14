@@ -4,6 +4,7 @@ import com.dongholab.kafka.model.exception.KafkaException
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import mu.KotlinLogging
+import org.apache.kafka.common.errors.DisconnectException
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.core.env.Environment
 import org.springframework.http.codec.ServerSentEvent
@@ -38,9 +39,10 @@ class MessageService(env: Environment) {
                         "fail send message"
                     }
                 }.map {
-
                     it
                 }
+        } catch (e: DisconnectException) {
+            return Mono.error(e)
         } catch (e: JsonProcessingException) {
             return Mono.error(KafkaException.SEND_ERROR)
         }
