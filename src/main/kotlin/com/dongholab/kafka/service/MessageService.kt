@@ -3,8 +3,9 @@ package com.dongholab.kafka.service
 import com.dongholab.kafka.model.exception.KafkaException
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
+import mu.KotlinLogging
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.annotation.Value
+import org.springframework.core.env.Environment
 import org.springframework.http.codec.ServerSentEvent
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
@@ -13,9 +14,10 @@ import reactor.core.publisher.Sinks.Many
 import reactor.core.scheduler.Schedulers
 import java.time.Duration
 
-
 @Service
-class MessageService {
+class MessageService(env: Environment) {
+    private val log = KotlinLogging.logger {}
+
     @Autowired
     private lateinit var sinksMany: Many<Any>
     @Autowired
@@ -23,21 +25,24 @@ class MessageService {
     @Autowired
     private lateinit var objectMapper: ObjectMapper
 
-    @Value("\${kafka.topic}")
-    private val topic: String? = null
+    private val topic: String = env.getProperty("kafka.topic", "test")
 
     fun send(key: String, value: Any): Mono<String> {
-        return try {
-            kafkaService!!.send(topic, key, objectMapper.writeValueAsString(value))
-                .map { b: Boolean ->
-                    if (b) {
+//        return Mono.just("test")
+        try {
+            return kafkaService.send(topic, key, objectMapper.writeValueAsString(value))
+                .map {
+                    if (it) {
                         "suceess send message"
                     } else {
                         "fail send message"
                     }
+                }.map {
+
+                    it
                 }
         } catch (e: JsonProcessingException) {
-            Mono.error(KafkaException.SEND_ERROR)
+            return Mono.error(KafkaException.SEND_ERROR)
         }
     }
 

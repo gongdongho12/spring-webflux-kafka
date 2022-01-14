@@ -16,7 +16,7 @@ import java.time.Duration
 
 
 @Configuration
-class KafkaConfig(val env: Environment) {
+class KafkaConfig(env: Environment) {
     private val host: String = env.getProperty("kafka.host", "localhost:9092")
     private val topic: String = env.getProperty("kafka.topic", "test")
     private val groupId: String = env.getProperty("kafka.groupId", "dongholab")
