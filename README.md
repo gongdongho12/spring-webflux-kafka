@@ -14,7 +14,6 @@ version: "2.2"
 services:
   zookeeper:
     image: zookeeper
-    restart: always
     container_name: zookeeper
     hostname: zookeeper
     ports:
@@ -32,7 +31,6 @@ services:
   kafka_manager:
     image: hlebalbau/kafka-manager:stable
     container_name: kakfa-manager
-    restart: always
     ports:
       - "9000:9000"
     environment:
