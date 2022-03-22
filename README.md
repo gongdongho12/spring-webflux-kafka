@@ -12,6 +12,17 @@ kafka-gui.yml
 ```yaml
 version: "2.2"
 services:
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+    - 9092:9092
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 127.0.0.1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
   zookeeper:
     image: zookeeper
     container_name: zookeeper
@@ -20,14 +31,8 @@ services:
       - 2181:2181
     environment:
       ZOO_MY_ID: 1
-  kafka:
-    image: wurstmeister/kafka
-    container_name: kafka
-    ports:
-    - 9092:9092
-    environment:
-      KAFKA_ADVERTISED_HOST_NAME: 127.0.0.1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    healthcheck:
+      test: "exit 0"
   kafka_manager:
     image: hlebalbau/kafka-manager:stable
     container_name: kakfa-manager
