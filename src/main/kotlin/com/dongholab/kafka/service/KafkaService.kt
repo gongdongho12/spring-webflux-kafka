@@ -18,12 +18,14 @@ import reactor.core.Disposable
 import reactor.core.publisher.Mono
 import reactor.core.publisher.Sinks
 import reactor.core.publisher.Sinks.Many
+import reactor.core.scheduler.Schedulers
 import reactor.kafka.receiver.KafkaReceiver
 import reactor.kafka.receiver.ReceiverOptions
 import reactor.kafka.receiver.ReceiverRecord
 import reactor.kafka.sender.KafkaSender
 import reactor.kotlin.core.publisher.switchIfEmpty
 import reactor.kotlin.core.publisher.toMono
+import java.time.Duration
 import javax.annotation.PostConstruct
 import javax.annotation.PreDestroy
 import java.util.function.Consumer;
@@ -137,17 +139,33 @@ class KafkaService {
             else -> {
                 when (value) {
                     is DataMessage -> {
-                        log.info { "save function: $value" }
+                        val (api, data) = value
+                        log.info { "api: $api" }
+                        log.info { "save function: $data" }
                         Mono.just(true)
                     }
                     is ApiMessage -> {
                         val (host, method) = value
-//                        sendAPI(host, HttpMethod.valueOf(method)).retrieve().bodyToMono(String::class.java).flatMap {
-//                            send("default", KafkaConstants.DATA_KEY, objectToString(DataMessage(
+                        sendAPI(host, HttpMethod.valueOf(method)).retrieve().bodyToMono(String::class.java).publishOn(Schedulers.boundedElastic()).map {
+                            log.info { "host: ${host} / data: ${it.substring(0, 30)}" }
+
+                            it
+                        }.map {
+//                            val record: Mono<ProducerRecord<String, Any>> = Mono.just(ProducerRecord(
+//                                KafkaConstants.topics.first(),
+//                                KafkaConstants.DATA_KEY,
+//                                objectToString(DataMessage(
+//                                    value,
+//                                    it.substring(0, 30)
+//                                ))
+//                            ))
+//                            kafkaSender.createOutbound().send(record).then().subscribe()
+//                            send(KafkaConstants.topics.first(), KafkaConstants.DATA_KEY, objectToString(DataMessage(
 //                                value,
-//                                it
+//                                it.substring(0, 30)
 //                            )))
-//                        }
+                            it
+                        }.subscribe()
                         Mono.just(true)
                     }
                     else -> {

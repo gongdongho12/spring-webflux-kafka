@@ -11,5 +11,5 @@ object KafkaConstants {
     )
     const val API_KEY = "API"
     const val DATA_KEY = "DATA"
-    const val groupId = "fridaytest"
+    const val groupId = "bb"
 }
