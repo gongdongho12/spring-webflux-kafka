@@ -1,5 +1,6 @@
 package com.dongholab.kafka.controller
 
+import com.dongholab.kafka.model.AssignMessage
 import com.dongholab.kafka.model.Message;
 import com.dongholab.kafka.service.MessageService
 import org.springframework.http.codec.ServerSentEvent;
@@ -18,6 +19,18 @@ class KafkaController(val messageService: MessageService) {
                 messageService.send(
                     msg.name,
                     msg
+                )
+            }
+    }
+
+    @PostMapping("/api")
+    fun produceMessageApi(@RequestBody assignMessage: Mono<AssignMessage>): Mono<String> {
+        return assignMessage
+            .flatMap { (topic, key, data): AssignMessage ->
+                messageService.sendData(
+                    topic,
+                    key,
+                    data
                 )
             }
     }

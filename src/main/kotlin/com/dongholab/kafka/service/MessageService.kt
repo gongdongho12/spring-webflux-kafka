@@ -1,8 +1,10 @@
 package com.dongholab.kafka.service
 
+import com.dongholab.kafka.constants.KafkaConstants
 import com.dongholab.kafka.model.exception.KafkaException
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.gson.Gson
 import mu.KotlinLogging
 import org.apache.kafka.common.errors.DisconnectException
 import org.springframework.beans.factory.annotation.Autowired
@@ -25,13 +27,31 @@ class MessageService(env: Environment) {
     private lateinit var kafkaService: KafkaService
     @Autowired
     private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var gson: Gson
 
-    private val topic: String = env.getProperty("kafka.topic", "test")
+    fun sendData(topic: String, key: String, value: Any): Mono<String> {
+        try {
+            return kafkaService.send(topic, key, gson.toJson(value))
+                .map {
+                    if (it) {
+                        "suceess send message"
+                    } else {
+                        "fail send message"
+                    }
+                }.map {
+                    it
+                }
+        } catch (e: DisconnectException) {
+            return Mono.error(e)
+        } catch (e: JsonProcessingException) {
+            return Mono.error(KafkaException.SEND_ERROR)
+        }
+    }
 
     fun send(key: String, value: Any): Mono<String> {
-//        return Mono.just("test")
         try {
-            return kafkaService.send(topic, key, objectMapper.writeValueAsString(value))
+            return kafkaService.send(KafkaConstants.topics.first(), key, objectMapper.writeValueAsString(value))
                 .map {
                     if (it) {
                         "suceess send message"
