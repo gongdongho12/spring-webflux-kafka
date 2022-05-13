@@ -71,7 +71,7 @@ class KafkaService {
             println("Kafka Consuming")
             val receivedData: Any = r.value()
             if (receivedData != null) {
-                sinksMany.emitNext(r.value(), Sinks.EmitFailureHandler.FAIL_FAST) // data를 consuming할때마다 sink로 전송
+                sinksMany.emitNext(receivedData, Sinks.EmitFailureHandler.FAIL_FAST) // data를 consuming할때마다 sink로 전송
             }
             r.receiverOffset().acknowledge()
         }
