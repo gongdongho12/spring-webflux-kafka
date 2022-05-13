@@ -5,9 +5,11 @@ import com.dongholab.kafka.model.ApiMessage
 import com.dongholab.kafka.model.DataMessage
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.gson.Gson
+import com.google.gson.stream.JsonReader
 import mu.KotlinLogging
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpMethod
 import org.springframework.stereotype.Service
 import org.springframework.util.LinkedMultiValueMap
@@ -23,9 +25,8 @@ import reactor.kafka.receiver.KafkaReceiver
 import reactor.kafka.receiver.ReceiverOptions
 import reactor.kafka.receiver.ReceiverRecord
 import reactor.kafka.sender.KafkaSender
-import reactor.kotlin.core.publisher.switchIfEmpty
-import reactor.kotlin.core.publisher.toMono
-import java.time.Duration
+import java.io.StringReader
+import java.lang.Exception
 import javax.annotation.PostConstruct
 import javax.annotation.PreDestroy
 import java.util.function.Consumer;
@@ -40,15 +41,23 @@ class KafkaService {
     private lateinit var kafkaSender: KafkaSender<String, Any>
 
     @Autowired
-    private lateinit var receiverOptions: ReceiverOptions<String, Any>
+    @Qualifier("api")
+    private lateinit var apiReceiverOptions: ReceiverOptions<String, Any>
 
     @Autowired
-    lateinit var sinksMany: Many<Any>
+    @Qualifier("data")
+    private lateinit var dataReceiverOptions: ReceiverOptions<String, Any>
 
+    @Autowired
+    @Qualifier("transaction")
+    lateinit var transactionSinksMany: Many<Any>
+
+    @Autowired
+    @Qualifier("receive")
+    lateinit var receiveSinksMany: Many<Any>
+    
     @Autowired
     lateinit var objectMapper: ObjectMapper
-
-    private var disposable: Disposable? = null
 
     @Autowired
     lateinit var apiClient: WebClient
@@ -56,21 +65,38 @@ class KafkaService {
     @Autowired
     private lateinit var gson: Gson
 
+    private var apiDisposable: Disposable? = null
+    private var dataDisposable: Disposable? = null
+
     @PostConstruct
-    fun init() {    // Consumer를 열어놓음
-        disposable = KafkaReceiver.create(receiverOptions).receive()
-            .doOnNext(processReceivedData())
+    fun initAPI() {    // Consumer를 열어놓음
+        apiDisposable = KafkaReceiver.create(apiReceiverOptions).receive()
+            .doOnNext(apiProcessReceivedData())
             .doOnError { e: Throwable? ->
-                log.error { "Kafka read error" }
-                init() // 에러 발생 시, consumer가 종료되고 재시작할 방법이 없기 때문에 error시 재시작
+                log.error { "Kafka api read error" }
+                initAPI() // 에러 발생 시, consumer가 종료되고 재시작할 방법이 없기 때문에 error시 재시작
+            }
+            .subscribe()
+    }
+
+    @PostConstruct
+    fun initData() {    // Consumer를 열어놓음
+        dataDisposable = KafkaReceiver.create(dataReceiverOptions).receive()
+            .doOnNext(dataProcessReceivedData())
+            .doOnError { e: Throwable? ->
+                log.error { "Kafka data read error" }
+                initData() // 에러 발생 시, consumer가 종료되고 재시작할 방법이 없기 때문에 error시 재시작
             }
             .subscribe()
     }
 
     @PreDestroy
     fun destroy() {
-        if (disposable != null) {
-            disposable!!.dispose()
+        if (apiDisposable != null) {
+            apiDisposable!!.dispose()
+        }
+        if (dataDisposable != null) {
+            dataDisposable!!.dispose()
         }
         kafkaSender!!.close()
     }
@@ -78,11 +104,20 @@ class KafkaService {
     fun objectToString(value: Any) = objectMapper.writeValueAsString(value)
 
     fun stringToObjectByKey(key: String, value: String): Any {
-        val assignValue = value.replace("\\\"", "\"")
-        return when (key) {
-            KafkaConstants.API_KEY -> gson.fromJson(assignValue, ApiMessage::class.java)
-            KafkaConstants.DATA_KEY -> gson.fromJson(assignValue, DataMessage::class.java)
-            else -> assignValue
+//        val assignValue = value.replace("\\\"", "\"")
+//        while (assignValue.contains("\\\"")) {
+//            assignValue = assignValue.replace("\\\"", "\'")
+//        }
+//        val reader: JsonReader = JsonReader(StringReader(assignValue))
+//        reader.setLenient(true);
+        try {
+            return when (key) {
+                KafkaConstants.API_KEY -> objectMapper.readValue(value, ApiMessage::class.java)
+                KafkaConstants.DATA_KEY -> objectMapper.readValue(value, DataMessage::class.java)
+                else -> value
+            }
+        } catch (e: Exception) {
+            throw Exception()
         }
     }
 
@@ -147,26 +182,16 @@ class KafkaService {
                     is ApiMessage -> {
                         val (host, method) = value
                         sendAPI(host, HttpMethod.valueOf(method)).retrieve().bodyToMono(String::class.java).publishOn(Schedulers.boundedElastic()).map {
-                            log.info { "host: ${host} / data: ${it.substring(0, 30)}" }
-
-                            it
+                            val assignData = it.substring(0, 150).trim()
+                            log.info { "host: ${host} / data: ${assignData}" }
+                            assignData
                         }.map {
-//                            val record: Mono<ProducerRecord<String, Any>> = Mono.just(ProducerRecord(
-//                                KafkaConstants.topics.first(),
-//                                KafkaConstants.DATA_KEY,
-//                                objectToString(DataMessage(
-//                                    value,
-//                                    it.substring(0, 30)
-//                                ))
-//                            ))
-//                            kafkaSender.createOutbound().send(record).then().subscribe()
-//                            send(KafkaConstants.topics.first(), KafkaConstants.DATA_KEY, objectToString(DataMessage(
-//                                value,
-//                                it.substring(0, 30)
-//                            )))
-                            it
-                        }.subscribe()
-                        Mono.just(true)
+                            send(KafkaConstants.receiveTopics.first(), KafkaConstants.DATA_KEY, objectToString(DataMessage(
+                                value,
+                                it
+                            ))).subscribeOn(Schedulers.single()).log().subscribe()
+                            true
+                        }
                     }
                     else -> {
                         Mono.just(true)
@@ -176,18 +201,22 @@ class KafkaService {
         }
     }
 
-    private fun processReceivedData(): Consumer<ReceiverRecord<String, Any>> {
+    private fun apiProcessReceivedData(): Consumer<ReceiverRecord<String, Any>> {
         return Consumer<ReceiverRecord<String, Any>> { r ->
-            println("Kafka Consuming")
+            println("Kafka Consuming Transaction")
             val receivedData: Any = r.value()
             if (receivedData != null) {
                 val topic = r.topic()
-                sinksMany.emitNext("topic: $topic / data: $receivedData", Sinks.EmitFailureHandler.FAIL_FAST)
-                val key = r.key()
-                val value: Any = stringToObjectByKey(key, receivedData as String)
-                log.info { "Kafka topic: ${topic} data: ${receivedData}" }
+                try {
+                    val key = r.key()
+                    val value: Any = stringToObjectByKey(key, receivedData as String)
+                    log.info { "Kafka topic: ${topic} data: ${receivedData}" }
 
-                consume(topic, key, value)
+                    consume(topic, key, value).subscribe()
+                    transactionSinksMany.emitNext("topic: $topic / data: $receivedData", Sinks.EmitFailureHandler.FAIL_FAST)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
 //                    .onErrorResume {
 //                    when (topic) {
 //                        "default" -> {
@@ -205,9 +234,29 @@ class KafkaService {
 //                        else -> { Mono.empty() }
 //                    }
 //                }
-                    .subscribe()
 
                 // data를 consuming할때마다 sink로 전송
+            }
+            r.receiverOffset().acknowledge()
+        }
+    }
+
+    private fun dataProcessReceivedData(): Consumer<ReceiverRecord<String, Any>> {
+        return Consumer<ReceiverRecord<String, Any>> { r ->
+            println("Kafka Consuming Receive")
+            val receivedData: Any = r.value()
+            if (receivedData != null) {
+                val topic = r.topic()
+                try {
+                    val key = r.key()
+                    val value: Any = stringToObjectByKey(key, receivedData as String)
+                    log.info { "Kafka topic: ${topic} data: ${receivedData}" }
+
+                    consume(topic, key, value).subscribe()
+                    receiveSinksMany.emitNext("topic: $topic / data: $receivedData", Sinks.EmitFailureHandler.FAIL_FAST)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
             r.receiverOffset().acknowledge()
         }

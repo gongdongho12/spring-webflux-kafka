@@ -22,14 +22,20 @@ class KafkaConfig() {
             producerProps
         )
         senderOptions.scheduler(Schedulers.parallel())
-        senderOptions.closeTimeout(Duration.ofSeconds(5))
+        senderOptions.closeTimeout(Duration.ofSeconds(20))
         return KafkaSender.create(senderOptions)
     }
 
-    @Bean
-    fun receiverOptions(): ReceiverOptions<String, Any> {
+    @Bean(name=arrayOf("api"))
+    fun apiReceiverOptions(): ReceiverOptions<String, Any> {
         return ReceiverOptions.create<String, Any>(consumerProps)
-            .subscription(KafkaConstants.topics)
+            .subscription(KafkaConstants.transactionTopics)
+    }
+
+    @Bean(name=arrayOf("data"))
+    fun dataReceiverOptions(): ReceiverOptions<String, Any> {
+        return ReceiverOptions.create<String, Any>(consumerProps)
+            .subscription(KafkaConstants.receiveTopics)
     }
 
     // 프로듀서 설정

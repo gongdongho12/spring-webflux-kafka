@@ -36,7 +36,12 @@ class KafkaController(val messageService: MessageService) {
     }
 
     @GetMapping
-    fun consumeMessage(): Flux<ServerSentEvent<Any>> {
-        return messageService.receive()
+    fun consumeTransactionMessage(): Flux<ServerSentEvent<Any>> {
+        return messageService.transactionReceive()
+    }
+
+    @GetMapping("/data")
+    fun consumeDataMessage(): Flux<ServerSentEvent<Any>> {
+        return messageService.dataReceive()
     }
 }

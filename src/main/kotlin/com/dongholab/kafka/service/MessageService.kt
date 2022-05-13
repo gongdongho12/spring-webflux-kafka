@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import mu.KotlinLogging
 import org.apache.kafka.common.errors.DisconnectException
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.core.env.Environment
 import org.springframework.http.codec.ServerSentEvent
 import org.springframework.stereotype.Service
@@ -22,7 +23,13 @@ class MessageService(env: Environment) {
     private val log = KotlinLogging.logger {}
 
     @Autowired
-    private lateinit var sinksMany: Many<Any>
+    @Qualifier("transaction")
+    private lateinit var transactionSinksMany: Many<Any>
+
+    @Autowired
+    @Qualifier("receive")
+    private lateinit var receiveSinksMany: Many<Any>
+
     @Autowired
     private lateinit var kafkaService: KafkaService
     @Autowired
@@ -51,7 +58,7 @@ class MessageService(env: Environment) {
 
     fun send(key: String, value: Any): Mono<String> {
         try {
-            return kafkaService.send(KafkaConstants.topics.first(), key, objectMapper.writeValueAsString(value))
+            return kafkaService.send(KafkaConstants.transactionTopics.first(), key, objectMapper.writeValueAsString(value))
                 .map {
                     if (it) {
                         "suceess send message"
@@ -68,8 +75,22 @@ class MessageService(env: Environment) {
         }
     }
 
-    fun receive(): Flux<ServerSentEvent<Any>> {
-        return sinksMany
+    fun transactionReceive(): Flux<ServerSentEvent<Any>> {
+        return transactionSinksMany
+            .asFlux()
+            .publishOn(Schedulers.parallel())
+            .map { message: Any ->
+                ServerSentEvent.builder(
+                    message
+                ).build()
+            } // Sink로 전송되는 message를 ServerSentEvent로 전송
+            .mergeWith(ping())
+            .onErrorResume { e: Throwable? -> Flux.empty() }
+            .doOnCancel { println("disconnected by client") } // client 종료 시, ping으로 인지하고 cancel signal을 받음
+    }
+
+    fun dataReceive(): Flux<ServerSentEvent<Any>> {
+        return receiveSinksMany
             .asFlux()
             .publishOn(Schedulers.parallel())
             .map { message: Any ->
@@ -83,7 +104,7 @@ class MessageService(env: Environment) {
     }
 
     private fun ping(): Flux<ServerSentEvent<Any>> {
-        return Flux.interval(Duration.ofMillis(500))
+        return Flux.interval(Duration.ofMillis(5000))
             .map { i: Long? ->
                 ServerSentEvent.builder<Any>().build()
             }

@@ -11,6 +11,7 @@ import java.util.*
 class GsonConfiguration {
     @Bean("gson")
     fun gson() = GsonBuilder()
+        .setLenient()
         .registerTypeAdapter(Date::class.java, DateSerializer())
         .registerTypeAdapter(Date::class.java, DateDeserializer())
         .create()
