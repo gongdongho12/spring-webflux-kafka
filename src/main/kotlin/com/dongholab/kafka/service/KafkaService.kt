@@ -31,8 +31,6 @@ import javax.annotation.PostConstruct
 import javax.annotation.PreDestroy
 import java.util.function.Consumer;
 
-
-
 @Service
 class KafkaService {
     private val log = KotlinLogging.logger {}
@@ -212,28 +210,27 @@ class KafkaService {
                     val value: Any = stringToObjectByKey(key, receivedData as String)
                     log.info { "Kafka topic: ${topic} data: ${receivedData}" }
 
-                    consume(topic, key, value).subscribe()
+                    consume(topic, key, value).onErrorResume {
+                        when (topic) {
+                            "default" -> {
+                                send("retry1", key, value)
+                            }
+                            "retry1" -> {
+                                send("retry2", key, value)
+                            }
+                            "retry2" -> {
+                                send("retry3", key, value)
+                            }
+                            "retry3" -> {
+                                send("error", key, value)
+                            }
+                            else -> { Mono.empty() }
+                        }
+                    }.subscribe()
                     transactionSinksMany.emitNext("topic: $topic / data: $receivedData", Sinks.EmitFailureHandler.FAIL_FAST)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-//                    .onErrorResume {
-//                    when (topic) {
-//                        "default" -> {
-//                            send("retry1", key, value)
-//                        }
-//                        "retry1" -> {
-//                            send("retry2", key, value)
-//                        }
-//                        "retry2" -> {
-//                            send("retry3", key, value)
-//                        }
-//                        "retry3" -> {
-//                            send("error", key, value)
-//                        }
-//                        else -> { Mono.empty() }
-//                    }
-//                }
 
                 // data를 consuming할때마다 sink로 전송
             }
